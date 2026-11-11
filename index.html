@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>I Love You, in every language</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: pointer; touch-action: manipulation; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="A heart made entirely of the words I love you, written in many languages"></canvas>
+<script>
+(() => {
+  // "I love you" around the world
+  const PHRASES = [
+    "I Love You", "Te amo", "Je t’aime", "أحبك", "میں تم سے محبت کرتا ہوں",
+    "मैं तुमसे प्यार करता हूँ", "Seni seviyorum", "Ti amo", "Ich liebe dich", "愛してる",
+    "사랑해", "我爱你", "Eu te amo", "Я тебя люблю", "আমি তোমাকে ভালোবাসি",
+    "Ik hou van jou", "Jag älskar dig", "Jeg elsker deg", "Jeg elsker dig", "Minä rakastan sinua",
+    "Kocham cię", "Miluji tě", "Σ’ αγαπώ", "אני אוהב אותך", "دوستت دارم",
+    "ฉันรักเธอ", "Anh yêu em", "Aku cinta kamu", "Mahal kita", "Nakupenda",
+    "Szeretlek", "Te iubesc", "Я тебе кохаю", "நான் உன்னை காதலிக்கிறேன்", "నేను నిన్ను ప్రేమిస్తున్నాను",
+    "ਮੈਂ ਤੈਨੂੰ ਪਿਆਰ ਕਰਦਾ ਹਾਂ", "હું તને પ્રેમ કરું છું", "मी तुझ्यावर प्रेम करतो", "म तिमीलाई माया गर्छु", "მიყვარხარ",
+    "Ես քեզ սիրում եմ", "Tá grá agam duit", "Dw i’n dy garu di", "Ég elska þig", "T’estimo",
+    "Volim te", "Волим те", "Обичам те", "Ľúbim ťa", "Aš tave myliu",
+    "Es tevi mīlu", "Ma armastan sind", "Ek is lief vir jou", "Ngiyakuthanda", "Mi amas vin",
+    "Të dua", "我愛你", "Aroha au ki a koe", "Aloha wau iā ʻoe", "Би чамд хайртай", "Amo te"
+  ];
+  const POOL = PHRASES.concat(PHRASES.slice(0, 15), ["I Love You"]);
+  const COLORS = ["#ff2a45", "#ff2a45", "#ff2a45", "#e0143c", "#e0143c", "#ff4a3d", "#ff7b93", "#ff7b93", "#ffc2cd", "#c8102e"];
+  const FONT = '"Segoe UI","Noto Sans","Noto Sans Devanagari","Noto Sans Arabic","Nirmala UI","Leelawadee UI","Malgun Gothic","Yu Gothic UI","Microsoft YaHei UI","Noto Sans CJK SC","Arial Unicode MS",system-ui,sans-serif';
+
+  const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+  const mctx = document.createElement("canvas").getContext("2d");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const BEAT = 1500, INTRO = 800, BUILD = 7000;
+
+  // text widths measured once at 100px
+  mctx.font = `600 100px ${FONT}`;
+  const W100 = {};
+  PHRASES.forEach(t => W100[t] = mctx.measureText(t).width);
+
+  const inHeart = (u, v) => { const a = u * u + v * v - 1; return a * a * a - u * u * v * v * v <= 0; };
+
+  let W, H, dpr, items = [], doneT = 0, t0 = performance.now() - (reduced ? 1e6 : 0), rnd;
+
+  const makeRng = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const shuffle = a => { a = a.slice(); for (let i = a.length; i > 1;) { const j = (rnd() * i--) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  // pre-render each phrase once, with its neon glow baked in
+  function sprite(text, f, color) {
+    mctx.font = `600 ${f * dpr}px ${FONT}`;
+    const w = mctx.measureText(text).width / dpr, pad = f * 1.2;
+    const c = document.createElement("canvas");
+    c.width = Math.ceil((w + pad * 2) * dpr); c.height = Math.ceil((f * 1.3 + pad * 2) * dpr);
+    const g = c.getContext("2d");
+    g.font = mctx.font; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = g.shadowColor = color;
+    g.shadowBlur = f * 0.9 * dpr; g.fillText(text, c.width / 2, c.height / 2);
+    g.shadowBlur = f * 0.25 * dpr; g.fillText(text, c.width / 2, c.height / 2);
+    g.shadowBlur = 0; g.globalAlpha = 0.28; g.fillStyle = "#ffd9df"; g.fillText(text, c.width / 2, c.height / 2);
+    return { c, sw: c.width / dpr, sh: c.height / dpr };
+  }
+
+  function build() {
+    W = innerWidth; H = innerHeight; dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    rnd = makeRng(20261110);
+    const S = Math.min(W / 2.4, H / 2.42) * 0.98;
+    const fb = Math.max(8.5, S * 0.034), pitch = fb * 1.42;
+    const raw = [];
+
+    // pack rows of phrases inside the mathematical heart (x²+y²−1)³ − x²y³ ≤ 0
+    for (let y = H / 2 - 1.17 * S + pitch / 2; y < H / 2 + 1.19 * S; y += pitch) {
+      const f = fb * (0.9 + rnd() * 0.28), boxH = f * 1.05, runs = [];
+      let start = null;
+      for (let x = 0; x <= W; x += 2) {
+        const u = (x - W / 2) / S;
+        const ok = [-1, 0, 1].every(k => inHeart(u, 0.135 - (y + k * boxH / 2 - H / 2) / S));
+        if (ok && start === null) start = x;
+        else if (!ok && start !== null) { runs.push([start, x - 2]); start = null; }
+      }
+      for (const [L, R] of runs) {
+        const Wr = R - L, gm = f * 0.85, pk = []; let sumW = 0;
+        for (;;) {
+          const rem = Wr - sumW - gm * pk.length, j = 0.94 + rnd() * 0.12;
+          const t = shuffle(POOL).find(t => W100[t] * f * j / 100 <= rem && !pk.some(p => p.t === t));
+          if (!t) break;
+          const w = W100[t] * f * j / 100; pk.push({ t, w }); sumW += w;
+        }
+        const n = pk.length; if (!n) continue;
+        const s = n > 1 ? Math.min(1.22, (Wr - gm * (n - 1)) / sumW) : Math.min(1.22, Wr / pk[0].w);
+        const gap = n > 1 ? (Wr - sumW * s) / (n - 1) : 0;
+        let cur = n > 1 ? L : (L + R) / 2 - pk[0].w * s / 2;
+        for (const p of pk) {
+          const w = p.w * s;
+          raw.push({ t: p.t, f: w / W100[p.t] * 100, x: cur + w / 2, y });
+          cur += w + gap;
+        }
+      }
+    }
+
+    // build order: trace the outline first, then fill inward
+    raw.forEach(it => {
+      const u = (it.x - W / 2) / S, v = 0.135 - (it.y - H / 2) / S, a = u * u + v * v - 1;
+      const depth = clamp(-(a * a * a - u * u * v * v * v), 0, 1);
+      const band = Math.min(3, Math.floor(Math.sqrt(depth) * 3.2));
+      const ang = ((Math.atan2(u, v - 0.05) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI);
+      it.key = band + ang * 1.4 + (rnd() - 0.5) * 0.25;
+    });
+    raw.sort((a, b) => a.key - b.key);
+
+    doneT = 0;
+    items = raw.map((it, i) => {
+      const color = COLORS[(rnd() * COLORS.length) | 0], sp = sprite(it.t, it.f, color);
+      const d = INTRO + Math.pow(i / Math.max(1, raw.length - 1), 0.95) * BUILD + rnd() * 120;
+      const dur = 1700 + rnd() * 500;
+      doneT = Math.max(doneT, d + dur);
+      return { x: it.x, y: it.y, s: sp, d, dur,
+        sx: W / 2 + (rnd() - 0.5) * W * 1.1, sy: H / 2 + (rnd() - 0.5) * H * 1.1,
+        ox: (rnd() - 0.5) * 120, oy: (rnd() - 0.5) * 120,
+        ph: rnd() * 6.28, fs: 0.6 + rnd() * 0.8, ts: 1 + rnd() * 1.5, fa: it.f * 0.08 + 0.4 };
+    });
+    doneT += 200;
+  }
+
+  const back = p => { const c1 = 1.2, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+
+  function frame(now) {
+    const t = now - t0;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+
+    // heartbeat: a soft "lub-dub" once the heart is complete
+    let b = 0;
+    if (!reduced && t > doneT) {
+      const ramp = clamp((t - doneT) / 2500, 0, 1), ph = ((t - doneT) % BEAT) / BEAT;
+      b = ramp * (Math.exp(-Math.pow((ph - 0.06) / 0.045, 2)) + 0.65 * Math.exp(-Math.pow((ph - 0.27) / 0.055, 2)));
+    }
+    const sc = 1 + 0.032 * b;
+    ctx.save();
+    ctx.translate(W / 2, H / 2); ctx.scale(sc, sc); ctx.translate(-W / 2, -H / 2);
+
+    const ft = t * 0.001, mv = reduced ? 0 : 1;
+    for (const it of items) {
+      if (t < it.d) continue;
+      const p = clamp((t - it.d) / it.dur, 0, 1), e = 1 - Math.pow(1 - p, 3), arc = Math.sin(e * Math.PI);
+      const x = it.sx + (it.x - it.sx) * e + it.ox * arc + Math.sin(ft * it.fs + it.ph) * it.fa * e * mv;
+      const y = it.sy + (it.y - it.sy) * e + it.oy * arc + Math.cos(ft * it.fs * 0.83 + it.ph * 1.7) * it.fa * e * mv;
+      const s = 0.3 + 0.7 * back(p), w = it.s.sw * s, h = it.s.sh * s;
+      const tw = 1 - mv * 0.14 * (0.5 + 0.5 * Math.sin(ft * it.ts + it.ph * 3)) * e;
+      const a = Math.min(1, p * 3.5) * 0.92 * tw * (1 + 0.1 * b);
+      ctx.globalAlpha = Math.min(1, a);
+      ctx.drawImage(it.s.c, x - w / 2, y - h / 2, w, h);
+      // brief flash as each phrase lands
+      const fl = 0.55 * (1 - Math.abs(clamp((t - it.d - it.dur) / 500, -1, 1))) * a;
+      if (fl > 0.02 && !reduced) { ctx.globalAlpha = fl; ctx.drawImage(it.s.c, x - w / 2, y - h / 2, w, h); }
+    }
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+
+  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(build, 150); });
+  cv.addEventListener("pointerdown", () => { if (!reduced) t0 = performance.now(); }); // tap to replay
+  build();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
